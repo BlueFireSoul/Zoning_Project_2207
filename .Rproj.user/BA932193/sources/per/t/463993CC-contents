@@ -1,0 +1,69 @@
+---
+title: "Select Data"
+output: html_document
+---
+
+## Intro
+
+```{r}
+library(tidyverse)
+library(readxl)
+library(data.table)
+library(magrittr)
+library(janitor)
+
+rm(list=ls()) 
+
+setwd("C:/Users/dmh5950/OneDrive - The Pennsylvania State University/Los Angeles Zoning, 2022")
+
+# variable_selection <- read_excel("raw/CoreLogic/variable selection/221016, Historical Property 5.xlsx") %>% 
+#  rename(list = "...1") %>% 
+#  pull(list) %>%
+#  unlist %>%
+#  as.numeric %>%
+#  na.omit
+
+```
+
+```{r}
+setwd("C:/Users/dmh5950/OneDrive - The Pennsylvania State University/Los Angeles Zoning, 2022")
+if (!file.exists("cleaning/output/hist_property_basic5.Rdata")){
+hist_property_basic5 <- fread(file = "raw/CoreLogic/historical/hist_property_basic5/hist_property_basic5.txt", sep = "|", colClasses=list(character=c(14,1))) %>% dplyr::rename(cbsa = "SITUS CORE BASED STATISTICAL AREA (CBSA)", lat = "PARCEL LEVEL LATITUDE", lon = "PARCEL LEVEL LONGITUDE") %>% janitor::clean_names() 
+
+save(hist_property_basic5, file = "cleaning/output/hist_property_basic5.Rdata")
+}
+
+load("cleaning/output/hist_property_basic5.Rdata")
+
+
+# Examine the data. 31080 has the highest frequency. It should be Los Angeles Metro Area
+
+# Los Angeles–Long Beach–Anaheim, CA MSA 31080
+# Riverside–San Bernardino–Ontario, CA MSA 40140
+# Oxnard-Thousand Oaks-Ventura, CA MSA 37100
+
+hist_property_basic5_full <- filter(hist_property_basic5, !is.na(lat), !is.na(lon))
+
+hist_property_basic5_Los <- filter(hist_property_basic5_full, cbsa %in% c(31080,40140,37100))
+hist_property_basic5_Los001p <- sample_frac(hist_property_basic5_Los, 0.0001)
+hist_property_basic5_full001p <- hist_property_basic5_full %>% group_by(cbsa) %>% sample_frac(0.0001)
+
+write.csv(hist_property_basic5_Los,"cleaning/output/hist_property_basic5_Los.csv", row.names = FALSE)
+write.csv(hist_property_basic5_Los001p,"cleaning/output/hist_property_basic5_Los001p.csv", row.names = FALSE)
+write.csv(hist_property_basic5_full001p,"cleaning/output/hist_property_basic5_full001p.csv", row.names = FALSE)
+
+# hist_property_basic5 %<>% select(variable_selection) 
+# hist_property_basic5_full <- filter(hist_property_basic5, !is.na(lat), !is.na(lon))
+
+# hist_property_basic5_Los <- filter(hist_property_basic5_full, cbsa==31080)
+# hist_property_basic5_Los10p <- sample_frac(hist_property_basic5_Los, 0.1)
+# hist_property_basic5_full2p <- hist_property_basic5_full %>% group_by(cbsa) %>% sample_frac(0.02)
+
+# write.csv(hist_property_basic5_Los,"cleaning/output/hist_property_basic5_se_LoS.csv", row.names = FALSE)
+# write.csv(hist_property_basic5_Los10p,"cleaning/output/hist_property_basic5_se_Los10p.csv", row.names = FALSE)
+# write.csv(hist_property_basic5_full2p,"cleaning/output/hist_property_basic5_se_full2p.csv", row.names = FALSE)
+
+```
+
+
+

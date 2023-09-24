@@ -1,0 +1,237 @@
+---
+title: "Select Data"
+output: html_document
+---
+
+## Intro
+
+```{r}
+library(epiDisplay)
+library(readxl)
+library(plotly)
+library(data.table)
+library(tidyverse)
+library(magrittr)
+
+rm(list=ls()) 
+
+variable_selection <- read_excel("raw/CoreLogic/variable selection/221016, Historical Property 5.xlsx") %>% 
+  rename(list = "...1") %>% 
+  pull(list) %>%
+  unlist %>%
+  as.numeric %>%
+  na.omit
+
+hist_property_basic5_Los <- fread(file = "cleaning/output/hist_property_basic5_Los.csv", select = variable_selection) %>%
+  mutate(build_age=2015-year_built, effective_build_age=2015-effective_year_built) %>%
+  mutate(effective_build_age=ifelse(is.na(effective_build_age),build_age,effective_build_age)) %>%
+  filter(is.element(property_indicator_code, c(10,11,21,22))) 
+
+single_family_homes <- hist_property_basic5_Los %>% filter(property_indicator_code==10)
+condo <- hist_property_basic5_Los %>% filter(property_indicator_code==11)
+duplex <- hist_property_basic5_Los %>% filter(property_indicator_code==21)
+apartment <- hist_property_basic5_Los %>% filter(property_indicator_code==22) 
+
+```
+
+```{r}
+apartment_size_median <- quantile(apartment$living_square_feet_all_buildings/apartment$number_of_units,0.5, na.rm=T)
+apartment_bed_median <- quantile(apartment$bedrooms_all_buildings/apartment$number_of_units,0.5, na.rm=T)
+apartment_unit_median <- quantile(apartment$number_of_units,0.5, na.rm=T)
+
+# Adjust NA sets
+
+
+summary(apartment$number_of_units)
+
+
+apartment_adj <- apartment %>%
+  mutate(adjustment_note=ifelse(is.na(number_of_units),
+                                "Missing unit, assign median","Original")) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Missing unit, assign median",
+                                floor(apartment_unit_median),number_of_units))
+
+apartment_adj %<>%
+  mutate(adjustment_note=ifelse(adjustment_note=="Missing unit, assign median" & !is.na(bedrooms_all_buildings),
+                                "Missing unit, infer from bedroom",adjustment_note)) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Missing unit, infer from bedroom",
+                                ceiling(bedrooms_all_buildings/apartment_bed_median),number_of_units))
+
+apartment_adj %<>%
+  mutate(adjustment_note=ifelse(adjustment_note=="Missing unit, assign median" & !is.na(living_square_feet_all_buildings),
+                                "Missing unit, infer from living space",adjustment_note)) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Missing unit, infer from living space",
+                                ceiling(living_square_feet_all_buildings/apartment_size_median),number_of_units))
+
+tab1(apartment_adj$adjustment_note, sort.group = "decreasing", cum.percent = TRUE, graph = F)
+summary(apartment_adj$number_of_units)
+
+# Adjust upper outliers
+
+apartment_adj %<>%
+  mutate(adjustment_note= ifelse(living_square_feet_all_buildings/number_of_units> 3000,
+                                 "Upper outlier, cap living space", adjustment_note) %>% 
+           ifelse(!is.na(living_square_feet_all_buildings/number_of_units), .,adjustment_note)) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Upper outlier, cap living space",
+                                ceiling(living_square_feet_all_buildings/3000),number_of_units))
+
+
+tab1(apartment_adj$adjustment_note, sort.group = "decreasing", cum.percent = TRUE, graph = F)
+summary(apartment_adj$number_of_units)
+
+apartment_adj %<>%
+  mutate(adjustment_note=ifelse(bedrooms_all_buildings/number_of_units >= 4,
+                                "Upper outlier, cap bedroom",adjustment_note) %>% 
+           ifelse(!is.na(bedrooms_all_buildings/number_of_units), .,adjustment_note)) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Upper outlier, cap bedroom",
+                                ceiling(bedrooms_all_buildings/apartment_bed_median),number_of_units))  
+
+
+tab1(apartment_adj$adjustment_note, sort.group = "decreasing", cum.percent = TRUE, graph = F)
+summary(apartment_adj$number_of_units)
+
+# Adjust lower outliers 
+
+apartment_adj %<>%
+  mutate(adjustment_note=ifelse(living_square_feet_all_buildings/number_of_units < 200,
+                                "Lower outlier, cap living space",adjustment_note) %>% 
+           ifelse(!is.na(living_square_feet_all_buildings/number_of_units), .,adjustment_note)) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Lower outlier, cap living space",
+                                floor(living_square_feet_all_buildings/200),number_of_units))
+
+apartment_adj %<>%
+  mutate(adjustment_note=ifelse(bedrooms_all_buildings/number_of_units < 1,
+                                "Lower outlier, cap bedroom",adjustment_note)%>% 
+           ifelse(!is.na(bedrooms_all_buildings/number_of_units), .,adjustment_note)) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Lower outlier, cap bedroom",
+                                bedrooms_all_buildings,number_of_units))  
+
+apartment_adj %<>%
+  mutate(number_of_units=ifelse(number_of_units==0,
+                                1,number_of_units))
+
+tab1(apartment_adj$adjustment_note, sort.group = "decreasing", cum.percent = TRUE, graph = F)
+summary(apartment_adj$number_of_units)
+
+apartment_adj <- data.frame(lapply(apartment_adj,rep,apartment_adj$number_of_units)) %>%
+  mutate(assessed_total_value=assessed_total_value/number_of_units,
+         assessed_land_value=assessed_land_value/number_of_units,
+         assessed_improvement_value=assessed_improvement_value/number_of_units,
+         land_square_footage=land_square_footage/number_of_units,
+         bedrooms_all_buildings=bedrooms_all_buildings/number_of_units,
+         living_square_feet_all_buildings=living_square_feet_all_buildings/number_of_units)
+```
+
+
+
+
+
+```{r}
+condo_adj <- condo %>%
+  mutate(land_square_footage=land_square_footage/number_of_units) %>%
+  mutate(adjustment_note= "Original")
+
+single_family_homes_adj <- single_family_homes %>%
+  mutate(adjustment_note= "Original")
+
+```
+
+```{r}
+duplex_size_median <- quantile(duplex$living_square_feet_all_buildings/duplex$number_of_units,0.5, na.rm=T)
+duplex_bed_median <- quantile(duplex$bedrooms_all_buildings/duplex$number_of_units,0.5, na.rm=T)
+duplex_unit_median <- quantile(duplex$number_of_units,0.5, na.rm=T)
+
+# Adjust NA sets
+
+
+summary(duplex$number_of_units)
+
+
+duplex_adj <- duplex %>%
+  mutate(adjustment_note=ifelse(is.na(number_of_units),
+                                "Missing unit, assign median","Original")) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Missing unit, assign median",
+                                floor(duplex_unit_median),number_of_units))
+
+duplex_adj %<>%
+  mutate(adjustment_note=ifelse(adjustment_note=="Missing unit, assign median" & !is.na(bedrooms_all_buildings),
+                                "Missing unit, infer from bedroom",adjustment_note)) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Missing unit, infer from bedroom",
+                                ceiling(bedrooms_all_buildings/duplex_bed_median),number_of_units))
+
+duplex_adj %<>%
+  mutate(adjustment_note=ifelse(adjustment_note=="Missing unit, assign median" & !is.na(living_square_feet_all_buildings),
+                                "Missing unit, infer from living space",adjustment_note)) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Missing unit, infer from living space",
+                                ceiling(living_square_feet_all_buildings/duplex_size_median),number_of_units))
+
+tab1(duplex_adj$adjustment_note, sort.group = "decreasing", cum.percent = TRUE, graph = F)
+summary(duplex_adj$number_of_units)
+
+# Adjust upper outliers
+
+duplex_adj %<>%
+  mutate(adjustment_note= ifelse(living_square_feet_all_buildings/number_of_units> 5000,
+                                 "Upper outlier, cap living space", adjustment_note) %>% 
+           ifelse(!is.na(living_square_feet_all_buildings/number_of_units), .,adjustment_note)) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Upper outlier, cap living space",
+                                ceiling(living_square_feet_all_buildings/5000),number_of_units))
+
+
+tab1(duplex_adj$adjustment_note, sort.group = "decreasing", cum.percent = TRUE, graph = F)
+summary(duplex_adj$number_of_units)
+
+duplex_adj %<>%
+  mutate(adjustment_note=ifelse(bedrooms_all_buildings/number_of_units >= 4,
+                                "Upper outlier, cap bedroom",adjustment_note) %>% 
+           ifelse(!is.na(bedrooms_all_buildings/number_of_units), .,adjustment_note)) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Upper outlier, cap bedroom",
+                                ceiling(bedrooms_all_buildings/duplex_bed_median),number_of_units))  
+
+
+tab1(duplex_adj$adjustment_note, sort.group = "decreasing", cum.percent = TRUE, graph = F)
+summary(duplex_adj$number_of_units)
+
+# Adjust lower outliers 
+
+duplex_adj %<>%
+  mutate(adjustment_note=ifelse(living_square_feet_all_buildings/number_of_units < 400,
+                                "Lower outlier, cap living space",adjustment_note) %>% 
+           ifelse(!is.na(living_square_feet_all_buildings/number_of_units), .,adjustment_note)) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Lower outlier, cap living space",
+                                floor(living_square_feet_all_buildings/400),number_of_units))
+  
+
+duplex_adj %<>%
+  mutate(adjustment_note=ifelse(bedrooms_all_buildings/number_of_units < 1,
+                                "Lower outlier, cap bedroom",adjustment_note)%>% 
+           ifelse(!is.na(bedrooms_all_buildings/number_of_units), .,adjustment_note)) %>%
+  mutate(number_of_units=ifelse(adjustment_note=="Lower outlier, cap bedroom",
+                                bedrooms_all_buildings,number_of_units))  
+
+duplex_adj %<>%
+  mutate(number_of_units=ifelse(number_of_units==0,
+                                1,number_of_units))
+
+tab1(duplex_adj$adjustment_note, sort.group = "decreasing", cum.percent = TRUE, graph = F)
+summary(duplex_adj$number_of_units)
+
+duplex_adj <- data.frame(lapply(duplex_adj,rep,duplex_adj$number_of_units)) %>%
+  mutate(assessed_total_value=assessed_total_value/number_of_units,
+         assessed_land_value=assessed_land_value/number_of_units,
+         assessed_improvement_value=assessed_improvement_value/number_of_units,
+         land_square_footage=land_square_footage/number_of_units,
+         bedrooms_all_buildings=bedrooms_all_buildings/number_of_units,
+         living_square_feet_all_buildings=living_square_feet_all_buildings/number_of_units)
+
+```
+
+```{r}
+hist_property_basic5_Los_adj <- rbind(single_family_homes_adj,apartment_adj,condo_adj,duplex_adj) %>%
+  select(clip,lat,lon,assessed_total_value,assessed_land_value,assessed_improvement_value,land_square_footage,bedrooms_all_buildings,living_square_feet_all_buildings,number_of_units,adjustment_note,property_indicator_code,build_age,effective_build_age)
+# hist_property_basic5_Los_adj10p <- sample_frac(hist_property_basic5_Los_adj, 0.1)
+
+write.csv(hist_property_basic5_Los_adj,"cleaning/output/hist_property_basic5_Los_adj.csv", row.names = FALSE)
+# write.csv(hist_property_basic5_Los_adj10p,"cleaning/output/hist_property_basic5_Los_adj10p.csv", row.names = FALSE)
+
+```

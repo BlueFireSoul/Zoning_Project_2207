@@ -1,0 +1,55 @@
+ui <- fluidPage(
+  # App title ----
+  titlePanel("DPS Results"),
+  tags$head(
+    tags$style(HTML(".multi-col { column-count: 3; };")),
+    tags$script(HTML("$(document).change(function() {
+        $('.irs-bar').css('background', 'transparent');
+        $('.irs-bar-edge').css('background-color', 'transparent');
+     });"))),
+
+  # Sidebar layout with input and output definitions ----
+  sidebarLayout(
+    # Sidebar panel for inputs ----
+    sidebarPanel(
+      # Input: Slider for the number of bins ----
+      selectInput("runname", "Name of the Run", choices = possible_runs),
+      actionButton("loadRunButton", "Load Results"),
+      hr(),
+      radioButtons(inputId = "type",
+        label = "What graph to show",
+        choices = list("Enroll by Age" = "EnrollAge", "Enroll by Educ" = "EnrollEduc",
+                       "ATE by Age" = "ATE",
+                       "mu distribution" = "muDist",
+                       "mu by age-edu" = "muAgeEdu",
+                       "Terminal Value by edu" = "termEdu",
+                       "Params" = "Params")),
+      radioButtons(input = "filterMethod", label = "Filter:",
+                   choices = list("Top 10" = NA, "Manually" = "man"),
+                   inline = TRUE),
+      radioButtons(input = "gender", label = "Plot by Gender:",
+                   choices = list("Gender Pooled" = 0,
+                                  "Gender Specific" = 1)),
+      radioButtons(input = "treat", label = "Plot by Treated and Control:",
+                   choices = list("Pooled" = 0,
+                                  "Seperated" = 1)),
+      conditionalPanel(condition = "input.filterMethod == 'man'",
+        tags$label("Choose Result(s):", class = "control-label"),
+        actionLink("toggleShowList", "Toggle Selection"),
+        div(class = "multi-col", uiOutput(outputId = "resCheckBox"))
+        ),
+      width = 3),
+
+    # Main panel for displaying outputs ----
+    mainPanel(
+      conditionalPanel(condition = "input.type == 'Params'",
+        DTOutput(outputId = "table")
+      ),
+      conditionalPanel(condition = "input.type != 'Params'",
+        plotlyOutput(outputId = "plot")
+      )
+    )
+  )
+)
+
+shinyApp(ui, server, options = list(port = 3838))

@@ -1,0 +1,41 @@
+---
+title: "Select Data"
+output: html_document
+---
+
+## Intro
+
+```{r}
+library(tidyverse)
+library(data.table)
+library(magrittr)
+library(janitor)
+
+rm(list=ls()) 
+
+if (!file.exists("cleaning/output/hist_property_basic5.Rdata")){
+hist_property_basic5 <- fread(file = "raw/CoreLogic/historical/hist_property_basic5/hist_property_basic5.txt", sep = "|") %>% 
+  select(1, 32, 33, 38, 39, 41, 184, 185, 48, 49, 82, 83, 87, 91, 95, 113, 116, 114, 115,
+         117:134) 
+
+save(hist_property_basic5, file = "cleaning/output/hist_property_basic5.Rdata")
+}
+
+load("cleaning/output/hist_property_basic5.Rdata")
+hist_property_basic5 %<>% dplyr::rename(cbsa = "SITUS CORE BASED STATISTICAL AREA (CBSA)", lat = "PARCEL LEVEL LATITUDE", lon = "PARCEL LEVEL LONGITUDE") %>% janitor::clean_names()
+
+
+# Examine the data. 31080 has the highest frequency. It should be Los Angeles Metro Area
+hist_property_basic5_full <- filter(hist_property_basic5, !is.na(lat), !is.na(lon))
+
+hist_property_basic5_Los <- filter(hist_property_basic5_full, cbsa==31080)
+hist_property_basic5_Los10p <- sample_frac(hist_property_basic5_Los, 0.1)
+hist_property_basic5_full2p <- hist_property_basic5_full %>% group_by(cbsa) %>% sample_frac(0.02)
+
+write.csv(hist_property_basic5_Los,"cleaning/output/hist_property_basic5_LoS.csv", row.names = FALSE)
+write.csv(hist_property_basic5_Los10p,"cleaning/output/hist_property_basic5_Los10p.csv", row.names = FALSE)
+write.csv(hist_property_basic5_full2p,"cleaning/output/hist_property_basic5_full2p.csv", row.names = FALSE)
+```
+
+
+

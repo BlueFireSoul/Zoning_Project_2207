@@ -1,0 +1,13 @@
+"0","hist_property_basic5_full <- filter(hist_property_basic5, !is.na(lat), !is.na(lon))
+
+hist_property_basic5_Los <- filter(hist_property_basic5_full, cbsa %in% c(31080,40140,37100))
+hist_property_basic5_Los001p <- sample_frac(hist_property_basic5_Los, 0.0001)
+hist_property_basic5_full001p <- hist_property_basic5_full %>% group_by(cbsa) %>% sample_frac(0.0001)
+
+write.csv(hist_property_basic5_Los,""cleaning/output/hist_property_basic5_Los.csv"", row.names = FALSE)
+write.csv(hist_property_basic5_Los001p,""cleaning/output/hist_property_basic5_Los001p.csv"", row.names = FALSE)
+write.csv(hist_property_basic5_full2p,""cleaning/output/hist_property_basic5_full2p.csv"", row.names = FALSE)
+"
+"2","Error in is.data.frame(x) : 
+  object 'hist_property_basic5_full2p' not found
+"

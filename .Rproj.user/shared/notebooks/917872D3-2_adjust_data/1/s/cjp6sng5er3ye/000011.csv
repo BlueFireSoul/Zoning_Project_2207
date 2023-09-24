@@ -1,0 +1,7 @@
+"0","hist_property_basic5_Los_adj <- rbind(single_family_homes_adj,apartment_adj,condo_adj,duplex_adj) %>%"
+"0","  select(clip,lat,lon,assessed_total_value,assessed_land_value,assessed_improvement_value,land_square_footage,bedrooms_all_buildings,living_square_feet_all_buildings,number_of_units,adjustment_note,property_indicator_code,build_age,effective_build_age)"
+"0","# hist_property_basic5_Los_adj10p <- sample_frac(hist_property_basic5_Los_adj, 0.1)"
+"0",""
+"0","write.csv(hist_property_basic5_Los_adj,""cleaning/output/hist_property_basic5_Los_adj.csv"", row.names = FALSE)"
+"0","# write.csv(hist_property_basic5_Los_adj10p,""cleaning/output/hist_property_basic5_Los_adj10p.csv"", row.names = FALSE)"
+"0",""

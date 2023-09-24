@@ -1,0 +1,70 @@
+---
+title: "Select Data"
+output: html_document
+---
+
+## Intro
+
+```{r}
+library(epiDisplay)
+library(plotly)
+library(data.table)
+library(tidyverse)
+library(magrittr)
+
+rm(list=ls()) 
+
+basic5_Los_adj <- fread(file = "cleaning/output/hist_property_basic5_Los_adj10p.csv") 
+
+```
+
+# Examine apartment
+```{r}
+apartment_unit_ori <- basic5_Los_adj %>%
+  filter(property_indicator_code==22 & adjustment_note=="Original") 
+
+apartment_unit_adj <- basic5_Los_adj %>%
+  filter(property_indicator_code==22 & adjustment_note!="Original") 
+
+summary(apartment_unit_ori$living_square_feet_all_buildings)
+summary(apartment_unit_adj$living_square_feet_all_buildings)
+
+summary(apartment_unit_ori$bedrooms_all_buildings)
+summary(apartment_unit_adj$bedrooms_all_buildings)
+
+```
+# Duplex
+```{r}
+
+duplex_ori <- basic5_Los_adj %>%
+  filter(property_indicator_code==21 & adjustment_note=="Original") 
+
+duplex_adj <- basic5_Los_adj %>%
+  filter(property_indicator_code==21 & adjustment_note!="Original") 
+
+summary(duplex_ori$living_square_feet_all_buildings)
+summary(duplex_adj$living_square_feet_all_buildings)
+
+
+summary(duplex_ori$bedrooms_all_buildings)
+summary(duplex_adj$bedrooms_all_buildings)
+```
+Condo (no need to adjust)
+```{r}
+condo_ori <- basic5_Los_adj %>%
+  filter(property_indicator_code==11) 
+
+summary(condo_ori$living_square_feet_all_buildings)
+summary(condo_ori$bedrooms_all_buildings)
+
+```
+
+Single-family home (no adjustment)
+```{r}
+single_home_ori <- basic5_Los_adj %>%
+  filter(property_indicator_code==10) 
+
+summary(single_home_ori$living_square_feet_all_buildings)
+summary(single_home_ori$bedrooms_all_buildings)
+
+```

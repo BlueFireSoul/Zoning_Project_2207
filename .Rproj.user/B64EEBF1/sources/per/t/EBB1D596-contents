@@ -1,0 +1,308 @@
+pacman::p_load(shiny, tidyverse, haven, magrittr,
+               summarytools, here, DT, plotly)
+
+dps_dir <- here("analysis/dynamic-parametric-structural-model")
+out_dir <- str_c(dps_dir, "/code/2_estimate/struct/output")
+
+possible_runs <- list.files(str_c(out_dir, "/predictions/children_df/"))
+
+source(str_c(dps_dir, "/code/3_analysis/0_depend/fitting_fn.R"))
+
+# Support Functions {{{
+load_data <- function(datapath) {
+  filenames <- list.files(datapath, full.names = T, pattern = ".csv$")
+  data_list <- list()
+  for (i in seq_len(length(filenames))) {
+    data_list[[i]] <- suppressMessages(read_csv(filenames[i]))
+  }
+  data <- bind_rows(data_list, .id = "para_id") %>%
+    rename(age = age_actual,
+           yrs_educ = edu_actual) %>%
+    mutate(para_id = as.integer(para_id),
+           treatment = as.integer(treatment),
+           enrolled = as.integer(enrolled)
+           )
+
+  return(data)
+}
+
+#' Return columns of plot
+pcol <- function(n_plot, gender = 0, treat = 0) {
+  if (gender == 0 && treat == 0) {
+    if (n_plot == 1) {
+      1
+    } else if (n_plot < 5) {
+      2
+    } else {
+      3
+    }
+  } else if (gender == 1 || treat == 1) { # Gender specific OR treatment
+    if (n_plot == 1) {
+      2
+    } else {
+      4
+    }
+  }
+}
+
+#' Filter results by likelihood
+sfilter <- function(filter_type, manual_selection, params) {
+  if (filter_type == "man") {
+    selected <- manual_selection
+  } else {
+    # selected <- as.character(1:nrow(params))
+    selected <- params %>%
+      mutate(para_id = row_number()) %>%
+      arrange(desc(llk)) %>%
+      pull(para_id) %>%
+      head(10)
+  }
+
+  n <- length(selected)
+  height <- ifelse(n <= 4, 300 * ceiling(n / 2), 250 * ceiling(n / 3))
+
+  list(selected = selected, height = height)
+}
+
+
+#' Plot of enroll by Age or Education
+#' @param group_var : age OR yrs_educ, do NOT wrap by quotation marks
+#' @param gender_specific : 0 or 1
+#' @param treat_specific : 0 or 1
+plot_fitting_master <- function(dataset, reslist,
+                               group_var,
+                               gender_specific,
+                               treat_specific) {
+
+  group_var <- enquo(group_var)
+
+  # Prepare data for plot
+  dataset %<>%
+    filter(para_id %in% reslist) %>%
+    mutate(gender = if_else(male == 1, "male", "female"),
+           treatment = if_else(treatment == 1, "treated", "control"))
+  plot_prepare <- function(data_grouped) {
+    data_grouped %>%
+      summarise(actual = mean(enrolled), predict = mean(y_asis), count = n(), .groups = "drop")   %>%
+      pivot_longer(cols = c("actual", "predict"), names_to = "group", values_to = "enroll_prob") %>%
+      ggplot(aes(x = !!group_var, y = enroll_prob))        +
+      geom_point(aes(color = group, size = count)) +
+      geom_line(aes(color = group))              +
+      scale_x_continuous(breaks = 0:17)
+  }
+
+  # Wrap data: different cases
+  if (gender_specific == 1 && treat_specific == 1) {
+    dataset %<>% group_by(!!group_var, gender, treatment, para_id)
+    plt <- dataset %>% plot_prepare() +
+      facet_wrap(~para_id + gender + treatment, ncol = 4)
+  } else if (gender_specific == 1) {
+    dataset %<>% group_by(!!group_var, gender, para_id)
+    plt <- dataset %>% plot_prepare() +
+      facet_wrap(~para_id + gender, ncol = pcol(length(reslist), gender = 1))
+  } else if (treat_specific == 1) {
+    dataset %<>% group_by(!!group_var, treatment, para_id)
+    plt <- dataset %>% plot_prepare() +
+      facet_wrap(~para_id + treatment, ncol = pcol(length(reslist), treat = 1))
+  } else{
+    dataset %<>% group_by(!!group_var, para_id)
+    plt <- dataset %>% plot_prepare() +
+      facet_wrap(~para_id, ncol = pcol(length(reslist)))
+  }
+
+  return(plt)
+}
+
+
+
+#' Plot ATE
+#' @param gender_specific 0 or 1
+plot_ate_master <- function(dataset, reslist,
+                            gender_specific) {
+
+  # Nest data
+  data_nest <- dataset %>%
+    filter(para_id %in% reslist) %>%
+    mutate(gender = if_else(male == 1, "male", "female"))
+
+  if (gender_specific == 1) {
+    data_nest %<>% nest(data = -c(para_id, gender))
+  } else {
+    data_nest %<>% nest(data = -para_id)
+  }
+
+  # Prepare plot
+  ate_age_all <- data_nest %>%
+    mutate(ate_all = map(data, ate_allpossible, age)) %>%
+    select(-data) %>%
+    unnest(ate_all) %>%
+    pivot_longer(cols = starts_with("ate_"), names_to = "ate_type", values_to = "ate")
+
+  plt_ate_age <- ate_age_all %>%
+    ggplot(aes(x = age, y = ate, color = ate_type)) +
+    geom_point() + geom_line() +
+    scale_x_continuous(breaks = 6:17)
+
+  if (gender_specific == 1) {
+    plt_wrap <- plt_ate_age + facet_wrap(~para_id + gender, ncol = 4)
+  } else {
+    plt_wrap <- plt_ate_age + facet_wrap(~para_id, ncol = pcol(length(reslist)))
+  }
+  return(plt_wrap)
+}
+
+# Plot the mu distribution
+hist_mu <- function(dataset, reslist) {
+  dataset %<>%
+    filter(para_id %in% reslist)
+
+  plt <- dataset %>%
+    ggplot(aes(x = muH_prob)) +
+    geom_histogram(bins = 50) +
+    facet_wrap(~para_id, ncol = pcol(length(reslist)))
+  return(plt)
+}
+
+# Plot μ by age and education
+mu_age_edu <- function(dataset, reslist) {
+  dataset %<>%
+    filter(para_id %in% reslist)
+
+  plt <- dataset %>%
+    group_by(age, yrs_educ, para_id) %>%
+    summarize(muH_prob = mean(muH_prob, na.rm = T),
+              count = n(),
+              .groups = "drop") %>%
+    ggplot(aes(x = age, y = yrs_educ, color = muH_prob, size = count)) +
+    geom_point() +
+    facet_wrap(~para_id, ncol = pcol(length(reslist))) +
+    scale_x_continuous(breaks = 6:17) +
+    scale_y_continuous(breaks = 0:12) +
+    scale_color_gradient(low = "yellow",
+                         high = "blue",
+                         space = "Lab",
+                         na.value = "white",
+                         guide = "legend",
+                         aesthetics = "color")
+  return(plt)
+}
+
+term_edu <- function(params, reslist) {
+  params$para_id <- seq_len(nrow(params))
+  params <- filter(params, para_id %in% reslist)
+  term_val <- expand_grid(para_id = params$para_id, edu = c(1:12))
+
+  term_val$value <- apply(term_val, 1, function(r) {
+    p <- filter(params, para_id == r[1])
+    p$α1 / (1 + exp(-p$α2 * r[2]))
+  })
+
+  ggplot(term_val, aes(x = edu, y = value)) +
+    geom_area(outline.type = "full") +
+    geom_line() +
+    facet_wrap(~para_id, ncol = pcol(length(reslist)))
+}
+# }}}
+
+############################################
+### SERVER SIDE                          ###
+############################################
+server <- function(input, output, session) {
+  params_df <- eventReactive(input$loadRunButton, {
+    parampath <- str_c(out_dir, "/predictions/para_df/", input$runname, "_paras.csv")
+    suppressMessages(read_csv(parampath))
+  })
+
+  dataset <- eventReactive(input$loadRunButton, {
+    datapath <- str_c(out_dir, "/predictions/children_df/", input$runname, "/")
+    load_data(datapath)
+  })
+
+  # Manual Selection Filter {{{3
+  # Load list of results
+  reslist <- reactive({
+    res <- seq_len(nrow(params_df()))
+    names(res) <- str_c("Run #", seq_len(length(res)))
+    return(res)
+  })
+
+  # Render UI Selector
+  output$resCheckBox <- renderUI({
+    res  <- reslist()
+    checkboxGroupInput("resShowList", label = NULL, res, selected = res)
+  })
+
+  # Toggle Functionality
+  observe({
+    res  <- reslist()
+
+    if (input$toggleShowList %% 2 == 0) {
+      updateCheckboxGroupInput(session, "resShowList", label = NULL, choices = res, selected = res)
+    } else {
+      updateCheckboxGroupInput(session, "resShowList", label = NULL, choices = res, selected = NULL)
+    }
+  })
+  # 3}}}
+
+  # Parameter Table {{{3
+  params <- reactive({
+    params    <- t(params_df())
+    colnames(params) <- str_c("Run #", seq_len(ncol(params)))
+    f <- sfilter(input$filterMethod, input$resShowList, params_df())
+    params <- params[, as.numeric(f$selected), drop = FALSE]
+    params[is.nan(params)] <- -9999
+    params %>% datatable(options = list(
+        pageLength = 32,
+        rowCallback = JS(
+          "function(row, data) {",
+            "for (i = 1; i < data.length; i++) {",
+              "var pIndex = data[i].toString().indexOf('.');",
+              "$('td:eq('+i+')', row).html(data[i].toString().substring(0, pIndex + 4));",
+              "if (data[i]>=1000 | (data[i]< 0.001 & data[i] > -0.001 & data[i] != 0)) {",
+                "$('td:eq('+i+')', row).html(data[i].toExponential(1));",
+              "}",
+              "if (data[i] == -9999) {",
+                "$('td:eq('+i+')', row).html('NaN');",
+              "}",
+            "}",
+          "}")
+        ))
+  })
+  output$table <- renderDT({
+    params()
+  })
+  # 3}}}
+
+  # Plots {{{3
+  output_plot <- reactive({
+    # Check if Run is loaded
+    if (is.null(params_df()) || is.null(dataset())) {
+      return(NULL)
+    }
+
+    f <- sfilter(input$filterMethod, input$resShowList, params_df())
+    if (input$type == "EnrollAge") {
+      gplot <- plot_fitting_master(dataset(), f$selected, age, input$gender, input$treat)
+    } else if (input$type == "EnrollEduc") {
+      gplot <- plot_fitting_master(dataset(), f$selected, yrs_educ, input$gender, input$treat)
+    } else if (input$type == "ATE") {
+      gplot <- plot_ate_master(dataset(), f$selected, input$gender)
+    } else if (input$type == "muDist") {
+      gplot <- hist_mu(dataset(), f$selected)
+    } else if (input$type == "muAgeEdu") {
+      gplot <- mu_age_edu(dataset(), f$selected)
+    } else if (input$type == "termEdu") {
+      gplot <- term_edu(params_df(), f$selected)
+    } else {
+      return(NULL)
+    }
+
+    return(ggplotly(gplot, height = f$height))
+  })
+
+  output$plot <- renderPlotly({
+    output_plot()
+  })
+  # 3}}}
+
+}

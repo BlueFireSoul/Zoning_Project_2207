@@ -1,0 +1,8 @@
+"0",""
+"0","condo_adj <- condo %>%"
+"0","  mutate(land_square_footage=land_square_footage/number_of_units) %>%"
+"0","  mutate(adjustment_note= ""Original"")"
+"0",""
+"0","single_family_homes_adj <- single_family_homes %>%"
+"0","  mutate(adjustment_note= ""Original"")"
+"0",""

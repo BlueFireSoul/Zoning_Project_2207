@@ -1,0 +1,6 @@
+"0","hist_property_basic5_Los_adj <- rbind(single_family_homes_adj,apartment_adj,condo_adj,duplex_adj)"
+"0","hist_property_basic5_Los_adj10p <- sample_frac(hist_property_basic5_Los_adj, 0.1)"
+"0",""
+"0","write.csv(hist_property_basic5_Los_adj,""cleaning/output/hist_property_basic5_Los_adj.csv"", row.names = FALSE)"
+"0","write.csv(hist_property_basic5_Los_adj10p,""cleaning/output/hist_property_basic5_Los_adj10p.csv"", row.names = FALSE)"
+"0",""
